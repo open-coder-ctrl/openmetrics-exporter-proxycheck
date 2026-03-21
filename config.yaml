@@ -1,0 +1,33 @@
+# Proxy Check Exporter Configuration
+
+server:
+  listen: ":9099"        # Address to listen on for Prometheus scrapes
+  interval: 30s          # How often to check proxies
+
+defaults:
+  target: "http://httpbin.org/ip"  # Default URL to check through proxies
+  timeout: 10s                       # Default timeout for checks
+
+proxies:
+  # HTTP proxy example
+  - name: "http-proxy-1"
+    type: http
+    address: "192.168.1.100:8080"
+
+  # HTTPS proxy with authentication
+  # WARNING: For production deployments, consider using environment variables
+  # or a secrets manager instead of plaintext credentials in this file.
+  # You can restrict file permissions: chmod 600 config.yaml
+  - name: "https-proxy-auth"
+    type: https
+    address: "proxy.example.com:443"
+    username: "user"
+    password: "pass"
+    target: "https://api.ipify.org?format=json"
+    expect_regex: ".*ip.*"
+
+  # SOCKS5 proxy example
+  - name: "socks5-proxy-1"
+    type: socks5
+    address: "127.0.0.1:1080"
+    timeout: 5s

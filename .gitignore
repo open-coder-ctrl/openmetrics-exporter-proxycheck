@@ -1,0 +1,20 @@
+# Binary
+proxycheck-exporter
+
+# Build output
+.build/
+
+# Test files
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+
+# Development scripts
+start_claude.sh
+docs/
