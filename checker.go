@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -26,6 +27,10 @@ type CheckResult struct {
 type Checker struct {
 	defaultTarget  string
 	defaultTimeout time.Duration
+	
+	// clientPool caches HTTP clients to enable connection reuse
+	clientMu sync.Mutex
+	clientPool map[string]*http.Client
 }
 
 // NewChecker creates a new Checker
@@ -33,6 +38,7 @@ func NewChecker(defaultTarget string, defaultTimeout time.Duration) *Checker {
 	return &Checker{
 		defaultTarget:  defaultTarget,
 		defaultTimeout: defaultTimeout,
+		clientPool:     make(map[string]*http.Client),
 	}
 }
 
@@ -48,7 +54,7 @@ func (c *Checker) Check(p ProxyConfig) CheckResult {
 		timeout = p.Timeout
 	}
 
-	client, err := c.createClient(p, timeout)
+	client, err := c.getClient(p, timeout)
 	if err != nil {
 		return CheckResult{
 			Success:   false,
@@ -115,10 +121,38 @@ func (c *Checker) Check(p ProxyConfig) CheckResult {
 	}
 }
 
+// getClient returns an HTTP client for the given proxy configuration.
+// It reuses existing clients from the pool when possible to enable connection reuse.
+func (c *Checker) getClient(p ProxyConfig, timeout time.Duration) (*http.Client, error) {
+	key := fmt.Sprintf("%s:%s:%s:%s", p.Type, p.Address, p.Username, p.Password)
+	
+	c.clientMu.Lock()
+	client, exists := c.clientPool[key]
+	c.clientMu.Unlock()
+	
+	if exists {
+		return client, nil
+	}
+	
+	client, err := c.createClient(p, timeout)
+	if err != nil {
+		return nil, err
+	}
+	
+	c.clientMu.Lock()
+	// Double-check after acquiring lock
+	if cached, exists := c.clientPool[key]; exists {
+		c.clientMu.Unlock()
+		return cached, nil
+	}
+	c.clientPool[key] = client
+	c.clientMu.Unlock()
+	
+	return client, nil
+}
+
 // createClient creates an HTTP client configured for the proxy type.
-// A new client is created for each check to ensure a clean state - this prevents
-// connection reuse issues and ensures timeout settings are properly applied
-// without interference from previous requests.
+// Clients are cached and reused to enable connection pooling.
 func (c *Checker) createClient(p ProxyConfig, timeout time.Duration) (*http.Client, error) {
 	switch p.Type {
 	case "http", "https":
@@ -139,6 +173,10 @@ func (c *Checker) createClient(p ProxyConfig, timeout time.Duration) (*http.Clie
 					Timeout:   timeout,
 					KeepAlive: 30 * time.Second,
 				}).DialContext,
+				// Enable connection pooling
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
 			},
 			Timeout: timeout,
 		}, nil
@@ -186,6 +224,10 @@ func (c *Checker) createClient(p ProxyConfig, timeout time.Duration) (*http.Clie
 						return nil, ctx.Err()
 					}
 				},
+				// Enable connection pooling
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
 			},
 			Timeout: timeout,
 		}, nil
