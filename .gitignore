@@ -1,20 +1,46 @@
-# Binary
-proxycheck-exporter
-
-# Build output
-.build/
-
-# Test files
-*.test
+```
+# Go build artifacts
+*.o
+*.a
 *.out
+*.test
+*.prof
+*.so
+*.dylib
+*.dll
 
-# IDE
-.idea/
-.vscode/
-.claude/
+# Go cache and modules
+go.mod.lock
+*.mod.lock
+go.sum.lock
+*.sum.lock
+vendor/
+
+# Go workspace
+gopath/
+bin/
+pkg/
+
+# Temporary files
+*.tmp
 *.swp
 *.swo
 
-# Development scripts
-start_claude.sh
-docs/
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

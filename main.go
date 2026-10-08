@@ -120,22 +120,40 @@ func runCheck(proxies []ProxyConfig, checker *Checker, collector *Collector) {
 	var wg sync.WaitGroup
 	var mu sync.Mutex // Protect collector updates
 
+	// Pre-allocate result channel to avoid allocations during concurrent updates
+	resultCh := make(chan struct {
+		proxy  ProxyConfig
+		result CheckResult
+	}, len(proxies))
+
 	for _, proxy := range proxies {
 		wg.Add(1)
 		go func(p ProxyConfig) {
 			defer wg.Done()
 			result := checker.Check(p)
-
-			mu.Lock()
-			collector.Update(p, result)
-			mu.Unlock()
-
-			if result.Success {
-				log.Printf("[%s] OK - %dms", p.Name, result.ResponseTime.Milliseconds())
-			} else {
-				log.Printf("[%s] FAILED - %s: %s", p.Name, result.ErrorType, result.Error)
-			}
+			resultCh <- struct {
+				proxy  ProxyConfig
+				result CheckResult
+			}{p, result}
 		}(proxy)
 	}
-	wg.Wait() // Wait for all checks to complete before next interval
+
+	// Close channel after all checks complete
+	go func() {
+		wg.Wait()
+		close(resultCh)
+	}()
+
+	// Collect results
+	for r := range resultCh {
+		mu.Lock()
+		collector.Update(r.proxy, r.result)
+		mu.Unlock()
+
+		if r.result.Success {
+			log.Printf("[%s] OK - %dms", r.proxy.Name, r.result.ResponseTime.Milliseconds())
+		} else {
+			log.Printf("[%s] FAILED - %s: %s", r.proxy.Name, r.result.ErrorType, r.result.Error)
+		}
+	}
 }
